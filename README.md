@@ -20,3 +20,20 @@ The main changes are:
   5. As a longer-term plan (i.e., 26-27), I'd like to also write a RISC-V native
      code generator (or supervise a student project to do so :))
 
+## RISC-V Code Generator (Point 5)
+
+This branch is my addition! A native RISC-V code generator for Fun, targeting the RARS simulator. Fun programs are compiled to RISC-V assembly and can be run in RARS.
+
+### Scripts
+
+`antlr` — regenerates the parser from `Fun.g4`. Run this if you edit the grammar.
+
+`clean` — deletes all compiled output for a fresh rebuild.
+
+`compile` — builds the compiler from source. Run this once before anything else.
+
+`funcc` — compiles a `.fun` file to RISC-V assembly. Usage: `funcc.bat examples\myprogram.fun`
+
+`open` — compiles a `.fun` file and opens it in the RARS GUI for debugging. Usage: `open.bat examples\myprogram.fun`
+
+`simulate` — compiles a `.fun` file and runs it in RARS, printing output to the terminal. Usage: `simulate.bat examples\myprogram.fun`

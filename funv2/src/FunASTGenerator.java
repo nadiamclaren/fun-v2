@@ -1,4 +1,4 @@
-import java.util.LinkedList;
+//import java.util.LinkedList;
 import java.util.List;
 
 import org.antlr.v4.runtime.tree.ParseTree;
@@ -19,12 +19,11 @@ public class FunASTGenerator {
         @Override
         public Expr visitFunccall(FunccallContext ctx) {
             String fnName = ctx.ID().getText();
-            List<Expr> args = new LinkedList<>();
-            if (ctx.actual_seq() != null && ctx.actual_seq().children != null) {
-                args = ctx.actual_seq().children.stream().map(x -> visit(x)).toList();
+            List<Expr> args = List.of();
+            if (ctx.actual_seq() != null) {
+                args = ctx.actual_seq().expr().stream().map(x -> visit(x)).toList();
             }
             return new ECall(fnName, args);
-            
         }
 
         @Override
@@ -58,7 +57,6 @@ public class FunASTGenerator {
             Expr e1 = visit(ctx.e1);
             if (ctx.op == null || ctx.e2 == null) {
                 return e1;
-
             }
 
             Expr e2 = visit(ctx.e2);
@@ -77,7 +75,6 @@ public class FunASTGenerator {
             Expr e1 = visit(ctx.e1);
             if (ctx.op == null || ctx.e2 == null) {
                 return e1;
-
             }
 
             Expr e2 = visit(ctx.e2);
@@ -107,12 +104,12 @@ public class FunASTGenerator {
         public Statement visitIf(IfContext ctx) {
             Expr test = exprGen.visit(ctx.expr());
             List<Statement> thenBranch =
-                ctx.c1.children.stream().map(s -> visit(s)).toList();
+                ctx.c1.statement().stream().map(s -> visit(s)).toList();
             if (ctx.c2 == null) {
                 return new SCond(test, thenBranch);
             }
             List<Statement> elseBranch =
-                ctx.c2.children.stream().map(s -> visit(s)).toList();
+                ctx.c2.statement().stream().map(s -> visit(s)).toList();
             return new SCond(test, thenBranch, elseBranch);
         }
 
@@ -120,10 +117,8 @@ public class FunASTGenerator {
         public Statement visitProccall(ProccallContext ctx) {
             String name = ctx.ID().getText();
             List<Expr> args = List.of();
-            if (ctx.actual_seq() != null && ctx.actual_seq().children != null) {
-                args = ctx.actual_seq()
-                            .children
-                            .stream()
+            if (ctx.actual_seq() != null) {
+                args = ctx.actual_seq().expr().stream()
                             .map(e -> exprGen.visit(e))
                             .toList();
             }
@@ -133,7 +128,7 @@ public class FunASTGenerator {
         @Override
         public Statement visitWhile(WhileContext ctx) {
             Expr test = exprGen.visit(ctx.expr());
-            List<Statement> body = ctx.seq_com().children.stream().map(s -> visit(s)).toList();
+            List<Statement> body = ctx.seq_com().statement().stream().map(s -> visit(s)).toList();
             return new SWhile(test, body);
         }
     }
@@ -148,8 +143,7 @@ public class FunASTGenerator {
             } else {
                 throw new RuntimeException("Invalid type: " + tyStr);
             }
-        } 
-
+        }
 
         private class FunDeclGenerator extends FunBaseVisitor<Decl> {
             @Override
@@ -169,7 +163,6 @@ public class FunASTGenerator {
                 Type ty = parseType(ctx.type().getText());
                 return new AnnotatedParameter(id, ty);
             }
-
         }
 
         private FunExprGenerator exprGen = new FunExprGenerator();
@@ -185,7 +178,9 @@ public class FunASTGenerator {
                 String name = ctx.ID().getText();
                 List<AnnotatedParameter> params = List.of();
                 if (ctx.formal_decl_seq() != null) {
-                    params = ctx.formal_decl_seq().children.stream().map(d -> paramGen.visit(d)).toList();
+                    params = ctx.formal_decl_seq().formal().stream()
+                                .map(d -> paramGen.visitFormal(d))
+                                .toList();
                 }
 
                 List<Decl> decls = List.of();
@@ -193,13 +188,12 @@ public class FunASTGenerator {
                     decls = ctx.var_decl().stream().map(d -> declGen.visit(d)).toList();
                 }
                 List<Statement> body = List.of();
-                if (ctx.seq_com() != null && ctx.seq_com().children != null) {
-                    body = ctx.seq_com().children.stream().map(d -> stmtGen.visit(d)).toList();
+                if (ctx.seq_com() != null) {
+                    body = ctx.seq_com().statement().stream().map(d -> stmtGen.visit(d)).toList();
                 }
                 Expr returnExpr = exprGen.visit(ctx.expr());
                 return new UserDefinedFunction(name, params, t, decls, body, returnExpr);
             }
-
         }
 
         private class FunProcedureGenerator extends FunBaseVisitor<UserDefinedProcedure> {
@@ -208,8 +202,10 @@ public class FunASTGenerator {
             public UserDefinedProcedure visitProc(ProcContext ctx) {
                 String id = ctx.ID().getText();
                 List<AnnotatedParameter> params = List.of();
-                if (ctx.formal_decl_seq() != null && ctx.formal_decl_seq().children != null) {
-                    params = ctx.formal_decl_seq().children.stream().map(d -> paramGen.visit(d)).toList();
+                if (ctx.formal_decl_seq() != null) {
+                    params = ctx.formal_decl_seq().formal().stream()
+                                .map(d -> paramGen.visitFormal(d))
+                                .toList();
                 }
                 List<Decl> decls = List.of();
                 if (ctx.var_decl() != null) {
@@ -217,19 +213,18 @@ public class FunASTGenerator {
                 }
                 List<Statement> body = List.of();
                 if (ctx.seq_com() != null) {
-                    body = ctx.seq_com().children.stream().map(d -> stmtGen.visit(d)).toList();
+                    body = ctx.seq_com().statement().stream().map(d -> stmtGen.visit(d)).toList();
                 }
                 return new UserDefinedProcedure(id, params, decls, body);
             }
         }
-       
+
         @Override
         public Program visitProg(ProgContext ctx) {
-            // 	:	var_decl* proc_decl+ EOF  # prog
             FunFunctionGenerator funcGen = new FunFunctionGenerator();
             FunProcedureGenerator procGen = new FunProcedureGenerator();
             FunDeclGenerator declGen = new FunDeclGenerator();
-            /* */
+
             List<Decl> globals = ctx.var_decl().stream().map(d -> declGen.visit(d)).toList();
 
             List<UserDefinedFunction> functions = ctx.proc_decl().stream()

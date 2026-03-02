@@ -1,5 +1,6 @@
 package typecheck;
 import java.util.List;
+import java.util.NoSuchElementException;
 
 import ast.*;
 import util.*;
@@ -8,56 +9,103 @@ public class Typecheck {
     Program program;
     ImmutableEnvironment<Type> globals = new ImmutableEnvironment<>();
 
+    // new! track whether any errors were encountered
+    private boolean hasErrors = false;
+
+    public boolean hasErrors() {
+        return hasErrors;
+    }
+
     public Typecheck(Program p) {
         this.program = p;
-        // Populate list of globals.
-        // Why is the interface for 'reduce' so weird?
         for (Decl d : p.getGlobals()) {
-            checkType(d.getType(), typecheckExpr(globals, d.getBody()));
-            globals = globals.extend(d.getVar(), d.getType());
+            try {
+                if (globals.contains(d.getVar())) {
+                    throw new TypeErrorException(
+                        String.format("Variable '%s' is already declared", d.getVar()));
+                }
+                checkType(d.getType(), typecheckExpr(globals, d.getBody()));
+                globals = globals.extend(d.getVar(), d.getType());
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Scope/type error in global declaration '"
+                    + d.getVar() + "': " + e.getMessage());
+                hasErrors = true; 
+            }
         }
     }
 
     public void typecheckProcedure(UserDefinedProcedure p) {
-        // Extend globals with parameters of procedure to start
         ImmutableEnvironment<Type> tyEnv = globals;
         for (AnnotatedParameter param : p.getParameters()) {
             tyEnv = tyEnv.extend(param.getName(), param.getType());
         }
-        // Next, typecheck all procedure declarations and extend environment.
         for (Decl d : p.getDeclarations()) {
-            checkType(d.getType(), typecheckExpr(tyEnv, d.getBody()));
-            tyEnv = tyEnv.extend(d.getVar(), d.getType());
+            try {
+                if (tyEnv.contains(d.getVar())) {
+                    System.err.println("Scope error in procedure '" + p.getName()
+                        + "': variable '" + d.getVar() + "' is already declared");
+                    hasErrors = true; 
+                    continue;
+                }
+                checkType(d.getType(), typecheckExpr(tyEnv, d.getBody()));
+                tyEnv = tyEnv.extend(d.getVar(), d.getType());
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Scope/type error in procedure '" + p.getName()
+                    + "', declaration '" + d.getVar() + "': " + e.getMessage());
+                hasErrors = true; 
+            }
         }
-        // Finally, typecheck all statements in body
         typecheckStatements(tyEnv, p.getStatements());
     }
 
     public void typecheckFunction(UserDefinedFunction f) {
-        // As above, but also check that final expression matches given type
         ImmutableEnvironment<Type> tyEnv = globals;
         for (AnnotatedParameter param : f.getParameters()) {
             tyEnv = tyEnv.extend(param.getName(), param.getType());
         }
-        // Next, typecheck all procedure declarations and extend environment.
         for (Decl d : f.getDeclarations()) {
-            checkType(d.getType(), typecheckExpr(tyEnv, d.getBody()));
-            tyEnv = tyEnv.extend(d.getVar(), d.getType());
+            try {
+                if (tyEnv.contains(d.getVar())) {
+                    System.err.println("Scope error in function '" + f.getName()
+                        + "': variable '" + d.getVar() + "' is already declared");
+                    hasErrors = true; 
+                    continue;
+                }
+                checkType(d.getType(), typecheckExpr(tyEnv, d.getBody()));
+                tyEnv = tyEnv.extend(d.getVar(), d.getType());
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Scope/type error in function '" + f.getName()
+                    + "', declaration '" + d.getVar() + "': " + e.getMessage());
+                hasErrors = true; 
+            }
         }
-        // Typecheck all statements in body
         typecheckStatements(tyEnv, f.getStatements());
-        checkType(f.getReturnType(), typecheckExpr(tyEnv, f.getReturnExpr()));
+        try {
+            checkType(f.getReturnType(), typecheckExpr(tyEnv, f.getReturnExpr()));
+        } catch (TypeErrorException | NoSuchElementException e) {
+            System.err.println("Type error in return expression of function '"
+                + f.getName() + "': " + e.getMessage());
+            hasErrors = true;  
+        }
     }
 
     public void checkType(Type expected, Type actual) {
         if (expected != actual) {
-            throw new TypeErrorException(String.format("Type mismatch. Expected %s but got %s",
+            throw new TypeErrorException(String.format(
+                "Type mismatch. Expected %s but got %s",
                 expected.toString(), actual.toString()));
         }
     }
 
     public void typecheckStatements(ImmutableEnvironment<Type> tyEnv, List<Statement> statements) {
-        statements.stream().forEach(s -> typecheckStatement(tyEnv, s));
+        statements.stream().forEach(s -> {
+            try {
+                typecheckStatement(tyEnv, s);
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Type error in statement: " + e.getMessage());
+                hasErrors = true;  
+            }
+        });
     }
 
     private void checkArguments(ImmutableEnvironment<Type> tyEnv,
@@ -70,37 +118,41 @@ public class Typecheck {
                 String.format("Arity mismatch in call to %s. Expected %d arguments but got %d",
                     name, paramCount, argCount));
         }
-
         for (int i = 0; i < paramCount; i++) {
             checkType(params.get(i).getType(), typecheckExpr(tyEnv, args.get(i)));
         }
     }
 
     public void typecheckStatement(ImmutableEnvironment<Type> tyEnv, Statement s) {
-        // Fun's design ensures that assigned variables are always in the environment
-        // already.
         if (s instanceof SAssign sa) {
             checkType(tyEnv.lookup(sa.getVar()), typecheckExpr(tyEnv, sa.getExpr()));
         } else if (s instanceof SCall sc) {
-            Procedure p = program.lookupProcedure(sc.getName());
-            checkArguments(tyEnv, p.getName(), p.getParameters(), sc.getArguments());
+            try {
+                Procedure p = program.lookupProcedure(sc.getName());
+                checkArguments(tyEnv, p.getName(), p.getParameters(), sc.getArguments());
+            } catch (NoSuchElementException e) {
+                throw new TypeErrorException("Undefined procedure: '" + sc.getName() + "'");
+            }
         } else if (s instanceof SCond sif) {
             checkType(typecheckExpr(tyEnv, sif.getTest()), Type.BOOL);
             typecheckStatements(tyEnv, sif.getThenBranch());
-            sif.getElseBranch().ifPresent(elseBranch -> typecheckStatements(tyEnv, elseBranch));
+            sif.getElseBranch().ifPresent(
+                elseBranch -> typecheckStatements(tyEnv, elseBranch));
         } else if (s instanceof SWhile sw) {
             checkType(typecheckExpr(tyEnv, sw.getTest()), Type.BOOL);
             typecheckStatements(tyEnv, sw.getBody());
         } else {
             throw new RuntimeException("Typechecking invalid statement " + s);
         }
-
     }
-
 
     public Type typecheckExpr(ImmutableEnvironment<Type> tyEnv, Expr e) {
         if (e instanceof EVar ev) {
-            return tyEnv.lookup(ev.getVar());
+            try {
+                return tyEnv.lookup(ev.getVar());
+            } catch (NoSuchElementException ex) {
+                throw new TypeErrorException("Unbound variable: '" + ev.getVar() + "'");
+            }
         } else if (e instanceof EInt) {
             return Type.INT;
         } else if (e instanceof EBool) {
@@ -111,13 +163,12 @@ public class Typecheck {
         } else if (e instanceof EBinOp ebo) {
             Type t1 = typecheckExpr(tyEnv, ebo.getLeft());
             Type t2 = typecheckExpr(tyEnv, ebo.getRight());
-
             switch (ebo.getOp()) {
-                case Op.EQ:
+                case EQ:
                     checkType(t1, t2);
                     return Type.BOOL;
-                case Op.LT:
-                case Op.GT:
+                case LT:
+                case GT:
                     checkType(t1, Type.INT);
                     checkType(t2, Type.INT);
                     return Type.BOOL;
@@ -126,25 +177,40 @@ public class Typecheck {
                 case SUB:
                 case DIV:
                     checkType(t1, Type.INT);
-                    checkType(t1, Type.INT);
+                    checkType(t2, Type.INT);
                     return Type.INT;
                 default:
                     throw new RuntimeException("Invalid operator: " + ebo.getOp().toString());
             }
         } else if (e instanceof ECall ec) {
-            Function f = program.lookupFunction(ec.getName());
-            checkArguments(tyEnv, ec.getName(), f.getParameters(), ec.getArguments());
-            return f.getReturnType();
+            try {
+                Function f = program.lookupFunction(ec.getName());
+                checkArguments(tyEnv, ec.getName(), f.getParameters(), ec.getArguments());
+                return f.getReturnType();
+            } catch (NoSuchElementException ex) {
+                throw new TypeErrorException("Undefined function: '" + ec.getName() + "'");
+            }
         } else {
             throw new RuntimeException("Typechecking invalid expression: " + e);
         }
     }
 
     public void typecheckProgram() {
-        // Globals already checked by the constructor.
-        // Check procedures and functions.
-        program.getProcedures().forEach(p -> typecheckProcedure(p));
-        program.getFunctions().forEach(p -> typecheckFunction(p));
+        program.getProcedures().forEach(p -> {
+            try {
+                typecheckProcedure(p);
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Error in procedure '" + p.getName() + "': " + e.getMessage());
+                hasErrors = true;  
+            }
+        });
+        program.getFunctions().forEach(f -> {
+            try {
+                typecheckFunction(f);
+            } catch (TypeErrorException | NoSuchElementException e) {
+                System.err.println("Error in function '" + f.getName() + "': " + e.getMessage());
+                hasErrors = true;  
+            }
+        });
     }
-
 }
