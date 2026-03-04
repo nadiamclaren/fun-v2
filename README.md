@@ -28,7 +28,7 @@ This branch is my addition! A native RISC-V code generator for Fun, targeting th
 
 `clean` — deletes all compiled output for a fresh rebuild.
 
-`compile` — builds the compiler from source. Run this once before anything else.
+`build` — builds the compiler from source and packages it as a fat JAR. Run this once before anything else.
 
 `funcc` — compiles a `.fun` file to RISC-V assembly (printed in terminal). Usage: `funcc.bat examples\myprogram.fun`
 
