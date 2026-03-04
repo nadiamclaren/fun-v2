@@ -26,13 +26,11 @@ This branch is my addition! A native RISC-V code generator for Fun, targeting th
 
 ### Scripts
 
-`antlr` — regenerates the parser from `Fun.g4`. Run this if you edit the grammar.
-
 `clean` — deletes all compiled output for a fresh rebuild.
 
 `compile` — builds the compiler from source. Run this once before anything else.
 
-`funcc` — compiles a `.fun` file to RISC-V assembly. Usage: `funcc.bat examples\myprogram.fun`
+`funcc` — compiles a `.fun` file to RISC-V assembly (printed in terminal). Usage: `funcc.bat examples\myprogram.fun`
 
 `open` — compiles a `.fun` file and opens it in the RARS GUI for debugging. Usage: `open.bat examples\myprogram.fun`
 
