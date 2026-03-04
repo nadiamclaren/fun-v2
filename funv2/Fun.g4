@@ -42,11 +42,11 @@ actual_seq
     ;
 
 expr
-    : e1=sec_expr (op=('==' | '!=' | '<' | '>') e2=sec_expr)?
+    : e1=sec_expr (op=('==' | '<' | '>') e2=sec_expr)?
     ;
 
 sec_expr
-    : e1=prim_expr (op=('+' | '-' | '*' | '/') e2=sec_expr)?
+    : prim_expr (op+=('+' | '-' | '*' | '/') prim_expr)*
     ;
 
 prim_expr
@@ -59,7 +59,7 @@ prim_expr
     | '(' expr ')'                                      # parens
     ;
 
-NUM : [0-9]+ ;
-ID  : [a-zA-Z_][a-zA-Z_0-9]* ;
-WS : [ \t\r\n]+ -> skip ;
-COMMENT : '//' ~[\r\n]* -> skip ;
+NUM     : [0-9]+ ;
+ID      : [a-zA-Z][a-zA-Z0-9]* ;
+WS      : [ \t\r\n]+ -> skip ;
+COMMENT : '#' ~[\r\n]* -> skip ;

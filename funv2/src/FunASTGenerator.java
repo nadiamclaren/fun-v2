@@ -72,26 +72,25 @@ public class FunASTGenerator {
 
         @Override
         public Expr visitSec_expr(Sec_exprContext ctx) {
-            Expr e1 = visit(ctx.e1);
-            if (ctx.op == null || ctx.e2 == null) {
-                return e1;
+            Expr result = visit(ctx.prim_expr(0));
+            for (int i = 0; i < ctx.op.size(); i++) {
+                Expr right = visit(ctx.prim_expr(i + 1));
+                String opName = ctx.op.get(i).getText();
+                Op op = switch (opName) {
+                    case "+" -> Op.ADD;
+                    case "-" -> Op.SUB;
+                    case "*" -> Op.MUL;
+                    case "/" -> Op.DIV;
+                    default -> throw new RuntimeException("Invalid operator " + opName);
+                };
+                result = new EBinOp(result, op, right);
             }
-
-            Expr e2 = visit(ctx.e2);
-            String opName = ctx.op.getText();
-            Op op = switch (opName) {
-                case "+" -> Op.ADD;
-                case "-" -> Op.SUB;
-                case "*" -> Op.MUL;
-                case "/" -> Op.DIV;
-                default -> throw new RuntimeException("Invalid operator " + opName);
-            };
-            return new EBinOp(e1, op, e2);
+            return result;
         }
     }
 
     public class FunStatementGenerator extends FunBaseVisitor<Statement> {
-        FunExprGenerator exprGen = new FunExprGenerator();
+        FunExprGenerator exprGen = new FunExprGenerator();  
 
         @Override
         public Statement visitAssn(AssnContext ctx) {
